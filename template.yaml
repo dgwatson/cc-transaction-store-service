@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  cc-transaction-store-service
+  
+  Sample SAM Template for cc-transaction-store-service
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+
+Resources:
+
+  CreditCardTransactionBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: poc-credit-card-transactions
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CreditCardTransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CreditCardTransactions
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 10
+
+  StoreCreditCardTransactionsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      FunctionName: storeCreditCardTransactions
+      CodeUri: ./
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          PARAM1: VALUE
+      Policies:
+        - DynamoDBWritePolicy:
+            PolicyName: StoreCreditCardTransactionsFunctionDDBRolePolicy
+            TableName: CreditCardTransactions
+        - S3ReadPolicy:
+            PolicyName: StoreCreditCardTransactionsFunctionS3RolePolicy
+            BucketName: poc-credit-card-transactions
+            
+  TransactionDataUpdatedEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: "TransactionDataUpdatedEventRule"
+      Description: "Credit card transaction data created or updated"
+      EventPattern:
+        source:
+          - "aws.s3"
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              - "poc-credit-card-transactions"
+          object:
+            key:
+              - prefix: "csv/"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - "StoreCreditCardTransactionsFunction"
+              - "Arn"
+          Id: "TransactionDataUpdatedEventTarget"
+
+  PermissionEventInvokeStoreCreditCardTransactionsFunction:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: "StoreCreditCardTransactionsFunction"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "TransactionDataUpdatedEventRule"
+          - "Arn"
+

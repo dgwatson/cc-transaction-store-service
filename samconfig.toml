@@ -1,0 +1,9 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "cc-transactions-store-service"
+resolve_s3 = true
+s3_prefix = "cc-transactions-store-service"
+region = "us-east-1"
+profile = "dgw-dev"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
